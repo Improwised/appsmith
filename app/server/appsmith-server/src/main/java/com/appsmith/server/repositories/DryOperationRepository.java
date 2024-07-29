@@ -2,7 +2,11 @@ package com.appsmith.server.repositories;
 
 import com.appsmith.external.models.Datasource;
 import com.appsmith.external.models.DatasourceStorage;
+import com.appsmith.server.acl.AclPermission;
+import com.appsmith.server.domains.Application;
 import com.appsmith.server.domains.CustomJSLib;
+import com.appsmith.server.domains.Theme;
+import com.appsmith.server.dtos.DBOpsType;
 import com.appsmith.server.dtos.MappedImportableResourcesDTO;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -14,6 +18,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static com.appsmith.server.helpers.ReactorUtils.asMonoDirect;
 
@@ -29,6 +34,10 @@ public class DryOperationRepository {
 
     private final TransactionTemplate transactionTemplate;
 
+    private final ThemeRepository themeRepository;
+
+    private final ApplicationRepository applicationRepository;
+
     private Map<Class<?>, AppsmithRepository<?>> repoByEntityClass;
 
     @PostConstruct
@@ -36,6 +45,7 @@ public class DryOperationRepository {
         final Map<Class<?>, AppsmithRepository<?>> map = new HashMap<>();
         map.put(Datasource.class, datasourceRepository);
         map.put(DatasourceStorage.class, datasourceStorageRepository);
+        map.put(Theme.class, themeRepository);
         map.put(CustomJSLib.class, customJSLibRepository);
         repoByEntityClass = Collections.unmodifiableMap(map);
     }
@@ -56,18 +66,35 @@ public class DryOperationRepository {
         return (List<CustomJSLib>) customJSLibRepository.saveAll(customJSLibs);
     }
 
+    private List<Theme> saveThemeToDb(List<Theme> theme) {
+        themeRepository.saveAll(theme);
+        return theme;
+    }
+
+    private int archiveTheme(List<String> themeIds) {
+        return themeRepository.archiveAllById(themeIds);
+    }
+
+    private List<Theme> updateTheme(List<Theme> themes) {
+        themeRepository.bulkUpdate(themeRepository, themes);
+        return themes;
+    }
+
+    private Optional<Application> updateApplication(Application application) {
+        String id = application.getId();
+        application.setId(null);
+        return applicationRepository.updateById(id, application, null, null);
+    }
+
     public Mono<Void> executeAllDbOps(MappedImportableResourcesDTO mappedImportableResourcesDTO) {
         MappedImportableResourcesDTO result = transactionTemplate.execute(ts -> {
             // Save all datasources
-            mappedImportableResourcesDTO
-                    .getDatasourceStorageDryRunQueries()
-                    .keySet()
-                    .forEach(key -> {
-                        List<Datasource> datasourceList = mappedImportableResourcesDTO
-                                .getDatasourceDryRunQueries()
-                                .get(key);
-                        saveDatasourceToDb(datasourceList);
-                    });
+            mappedImportableResourcesDTO.getDatasourceDryRunQueries().keySet().forEach(key -> {
+                List<Datasource> datasourceList = mappedImportableResourcesDTO
+                        .getDatasourceDryRunQueries()
+                        .get(key);
+                saveDatasourceToDb(datasourceList);
+            });
 
             // Save all datasource storage
             mappedImportableResourcesDTO
@@ -80,15 +107,37 @@ public class DryOperationRepository {
                         saveDatasourceStorageToDb(datasourceStorageList);
                     });
 
-            // Save all custom js libs
             mappedImportableResourcesDTO.getCustomJSLibsDryOps().keySet().forEach(key -> {
                 List<CustomJSLib> customJSLibList =
                         mappedImportableResourcesDTO.getCustomJSLibsDryOps().get(key);
                 saveCustomJSLibToDb(customJSLibList);
             });
+
+            mappedImportableResourcesDTO.getThemeDryRunQueries().keySet().forEach(key -> {
+                List<Theme> themeList =
+                        mappedImportableResourcesDTO.getThemeDryRunQueries().get(key);
+                if (key.equals(DBOpsType.SAVE.name())) {
+                    saveThemeToDb(themeList);
+                } else if (key.equals(DBOpsType.DELETE.name())) {
+                    archiveTheme(themeList.stream().map(Theme::getId).toList());
+                } else {
+                    updateTheme(themeList);
+                }
+            });
+
+            mappedImportableResourcesDTO.getApplicationDryRunQueries().keySet().forEach(key -> {
+                List<Application> applicationList = mappedImportableResourcesDTO
+                        .getApplicationDryRunQueries()
+                        .get(key);
+                if (key.equals(DBOpsType.SAVE.name())) {
+                    applicationList.forEach(this::updateApplication);
+                } else {
+                    applicationList.forEach(this::updateApplication);
+                }
+            });
+
             return mappedImportableResourcesDTO;
         });
-
         return asMonoDirect(() -> result).then();
     }
 }

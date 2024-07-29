@@ -438,6 +438,11 @@ public class ThemeServiceCEImpl extends BaseService<ThemeRepository, ThemeReposi
 
     @Override
     public Mono<Theme> getOrSaveTheme(Theme theme, Application destApplication) {
+        return getOrSaveTheme(theme, destApplication, false);
+    }
+
+    @Override
+    public Mono<Theme> getOrSaveTheme(Theme theme, Application destApplication, boolean isDryOps) {
         if (theme == null) { // this application was exported without theme, assign the legacy theme to it
             return repository.getSystemThemeByName(Theme.LEGACY_THEME_NAME, READ_THEMES); // return the default theme
         } else if (theme.isSystemTheme()) {
@@ -455,6 +460,10 @@ public class ThemeServiceCEImpl extends BaseService<ThemeRepository, ThemeReposi
             newTheme.setName(theme.getName());
             newTheme.setDisplayName(theme.getDisplayName());
             newTheme.setSystemTheme(false);
+            if (isDryOps) {
+                newTheme.updateForBulkWriteOperation();
+                return Mono.just(newTheme);
+            }
             return repository.save(newTheme);
         }
     }
