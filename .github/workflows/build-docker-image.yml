@@ -1,4 +1,4 @@
-name: Appsmith Build Docker Image Workflow
+name: Build and Push Docker image
 
 on:
   # This line enables manual triggering of this workflow.
