@@ -1,5 +1,4 @@
-ARG BASE
-FROM ${BASE}
+FROM appsmith/base-ee:release
 
 ENV IN_DOCKER=1
 
