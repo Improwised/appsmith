@@ -35,7 +35,7 @@
     "chromatic": "^11.3.0",
     "react-docgen-typescript": "^2.2.2",
     "storybook": "^8.2.6",
-    "vite": "^5.2.9",
+    "vite": "^5.2.14",
     "vite-plugin-svgr": "^4.2.0"
   },
   "dependencies": {
